@@ -35,12 +35,13 @@ function normalizePhone(raw) {
 
 app.get('/test-auth', async (req, res) => {
   try {
-    const account = await client.api.accounts(TWILIO_SID).fetch();
-    res.json({ success: true, accountName: account.friendlyName });
+    const balance = await client.api.v2010.accounts(TWILIO_SID).fetch();
+    res.json({ success: true, status: 'Authenticated', sid: balance.sid });
   } catch (err) {
-    res.status(401).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 app.post('/send-messages', async (req, res) => {
