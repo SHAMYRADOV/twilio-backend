@@ -11,8 +11,8 @@ app.use(bodyParser.json());
 
 const MONDAY_API_KEY = process.env.MONDAY_API_KEY;
 const BOARD_ID = process.env.BOARD_ID;
-const TWILIO_SID = process.env.TWILIO_SID;
-const TWILIO_AUTH = process.env.TWILIO_AUTH;
+const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM = process.env.TWILIO_FROM;
 
 const client = twilio(TWILIO_SID, TWILIO_AUTH);
