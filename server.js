@@ -33,6 +33,8 @@ function normalizePhone(raw) {
   return null;
 }
 
+console.log('Twilio config:', TWILIO_SID, TWILIO_AUTH, TWILIO_FROM);
+
 app.get('/test-auth', async (req, res) => {
   try {
     const balance = await client.api.v2010.accounts(TWILIO_SID).fetch();
