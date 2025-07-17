@@ -85,7 +85,8 @@ app.post('/send-messages', async (req, res) => {
 
       try {
         await client.messages.create({
-          from: TWILIO_FROM,
+          // from: TWILIO_FROM,
+          messagingServiceSid: MGdec68ad262c8c24a4c4bff18a23ecd32,
           to: phone,
           body: personalized,
           mediaUrl: imageUrl ? [imageUrl] : undefined,
