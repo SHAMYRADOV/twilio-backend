@@ -36,6 +36,47 @@ app.get('/test-auth', async (req, res) => {
   }
 });
 
+// 🧪 TEST ENDPOINT: Send to a single phone number directly
+app.post('/test-send', async (req, res) => {
+  const { phone, message } = req.body;
+  
+  if (!phone || !message) {
+    return res.status(400).json({ success: false, error: 'Phone and message required' });
+  }
+
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    return res.status(400).json({ success: false, error: 'Invalid phone format' });
+  }
+
+  try {
+    console.log(`🧪 TEST: Sending to ${normalizedPhone} from ${TWILIO_FROM}`);
+    const result = await client.messages.create({
+      from: TWILIO_FROM,
+      to: normalizedPhone,
+      body: message,
+    });
+
+    console.log(`✅ TEST SUCCESS - SID: ${result.sid}, Status: ${result.status}`);
+    res.json({ 
+      success: true, 
+      sid: result.sid, 
+      status: result.status,
+      to: result.to,
+      from: result.from
+    });
+  } catch (err) {
+    console.log(`❌ TEST FAILED - Code: ${err.code}, Message: ${err.message}`);
+    console.log('Full error:', JSON.stringify(err, null, 2));
+    res.status(500).json({ 
+      success: false, 
+      error: err.message,
+      code: err.code,
+      moreInfo: err.moreInfo
+    });
+  }
+});
+
 app.post('/send-messages', async (req, res) => {
   const { message, imageUrl } = req.body;
   const results = [];
@@ -84,19 +125,22 @@ app.post('/send-messages', async (req, res) => {
       const personalized = message.replaceAll('{name}', name);
 
       try {
-        await client.messages.create({
-          // from: TWILIO_FROM,
-          messagingServiceSid: MGdec68ad262c8c24a4c4bff18a23ecd32,
+        const result = await client.messages.create({
+          from: TWILIO_FROM,
+          // messagingServiceSid: 'MGdec68ad262c8c24a4c4bff18a23ecd32',
           to: phone,
           body: personalized,
           mediaUrl: imageUrl ? [imageUrl] : undefined,
         });
 
         console.log(`✅ Message sent to ${name} at ${phone}`);
-        results.push({ name, phone, status: 'sent' });
+        console.log(`📱 Twilio SID: ${result.sid}, Status: ${result.status}`);
+        results.push({ name, phone, status: 'sent', sid: result.sid, twilioStatus: result.status });
       } catch (err) {
-        console.log(`❌ Failed to send to ${name} at ${phone}: ${err.message}`);
-        results.push({ name, phone, status: 'failed', error: err.message });
+        console.log(`❌ Failed to send to ${name} at ${phone}`);
+        console.log(`❌ Error Code: ${err.code}, Message: ${err.message}`);
+        console.log(`❌ Full Error:`, JSON.stringify(err, null, 2));
+        results.push({ name, phone, status: 'failed', error: err.message, code: err.code });
       }
 
       // 🕐 1-second delay between each message
