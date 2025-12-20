@@ -79,13 +79,16 @@ app.post('/test-send', async (req, res) => {
 
 app.post('/send-messages', async (req, res) => {
   const { message, imageUrl } = req.body;
-  const results = [];
+  const startTime = Date.now();
 
   if (!message && !imageUrl) {
     return res.status(400).json({ success: false, error: 'Message or image is required.' });
   }
 
   try {
+    console.log('📞 Starting campaign...');
+    
+    // Fetch contractors from Monday.com
     const query = `
       query {
         boards(ids: "${BOARD_ID}") {
@@ -114,42 +117,106 @@ app.post('/send-messages', async (req, res) => {
     );
 
     const items = mondayRes.data.data.boards[0].items_page.items;
+    console.log(`📋 Fetched ${items.length} contractors from Monday.com`);
+
+    // Extract and deduplicate phone numbers
+    const contactsMap = new Map(); // Use Map to track duplicates
+    let duplicateCount = 0;
 
     for (const item of items) {
       const name = item.name;
-      const phoneField = item.column_values.find(c => c.id === 'text_mkpfez9j'); // Replace with your phone column ID
+      const phoneField = item.column_values.find(c => c.id === 'text_mkpfez9j');
       const rawPhone = phoneField?.text;
       const phone = normalizePhone(rawPhone);
+      
       if (!phone) continue;
 
-      const personalized = message.replaceAll('{name}', name);
-
-      try {
-        const result = await client.messages.create({
-          from: TWILIO_FROM,
-          // messagingServiceSid: 'MGdec68ad262c8c24a4c4bff18a23ecd32',
-          to: phone,
-          body: personalized,
-          mediaUrl: imageUrl ? [imageUrl] : undefined,
-        });
-
-        console.log(`✅ Message sent to ${name} at ${phone}`);
-        console.log(`📱 Twilio SID: ${result.sid}, Status: ${result.status}`);
-        results.push({ name, phone, status: 'sent', sid: result.sid, twilioStatus: result.status });
-      } catch (err) {
-        console.log(`❌ Failed to send to ${name} at ${phone}`);
-        console.log(`❌ Error Code: ${err.code}, Message: ${err.message}`);
-        console.log(`❌ Full Error:`, JSON.stringify(err, null, 2));
-        results.push({ name, phone, status: 'failed', error: err.message, code: err.code });
+      // Remove all non-digit characters for duplicate detection
+      const phoneKey = phone.replace(/\D/g, '');
+      
+      if (contactsMap.has(phoneKey)) {
+        duplicateCount++;
+        console.log(`🔄 Duplicate found: ${rawPhone} (${name}) - skipping`);
+      } else {
+        contactsMap.set(phoneKey, { name, phone, rawPhone });
       }
-
-      // 🕐 1-second delay between each message
-      await new Promise(res => setTimeout(res, 1000));
     }
 
-    res.json({ success: true, results });
+    const uniqueContacts = Array.from(contactsMap.values());
+    console.log(`✅ Unique contacts: ${uniqueContacts.length}`);
+    console.log(`🔄 Duplicates removed: ${duplicateCount}`);
+
+    // Batch configuration
+    const BATCH_SIZE = 10;
+    const BATCH_DELAY_MS = 2000; // 2 seconds between batches
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    // Process in batches
+    for (let i = 0; i < uniqueContacts.length; i += BATCH_SIZE) {
+      const batch = uniqueContacts.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(uniqueContacts.length / BATCH_SIZE);
+      
+      console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} messages)`);
+
+      // Send all messages in current batch in parallel
+      const batchPromises = batch.map(async (contact) => {
+        const { name, phone, rawPhone } = contact;
+        const personalized = message.replaceAll('{name}', name);
+
+        try {
+          const result = await client.messages.create({
+            from: TWILIO_FROM,
+            to: phone,
+            body: personalized,
+            mediaUrl: imageUrl ? [imageUrl] : undefined,
+          });
+
+          console.log(`✅ Sent to ${name} (${phone}) - SID: ${result.sid}`);
+          successCount++;
+          return { name, phone: rawPhone, status: 'sent', sid: result.sid, twilioStatus: result.status };
+        } catch (err) {
+          console.log(`❌ Failed: ${name} (${phone}) - ${err.message}`);
+          failureCount++;
+          return { name, phone: rawPhone, status: 'failed', error: err.message, code: err.code };
+        }
+      });
+
+      // Wait for all messages in batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+
+      // Delay before next batch (except for the last batch)
+      if (i + BATCH_SIZE < uniqueContacts.length) {
+        console.log(`⏳ Waiting ${BATCH_DELAY_MS / 1000}s before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
+
+    const endTime = Date.now();
+    const durationSeconds = Math.round((endTime - startTime) / 1000);
+    
+    console.log('🎉 Campaign complete!');
+    console.log(`✅ Success: ${successCount}`);
+    console.log(`❌ Failed: ${failureCount}`);
+    console.log(`⏱️  Duration: ${durationSeconds}s`);
+
+    res.json({ 
+      success: true, 
+      results,
+      summary: {
+        totalContacts: items.length,
+        duplicatesRemoved: duplicateCount,
+        uniqueContacts: uniqueContacts.length,
+        successCount,
+        failureCount,
+        durationSeconds
+      }
+    });
   } catch (err) {
-    console.error('❌ Error:', err?.response?.data || err.message);
+    console.error('❌ Campaign Error:', err?.response?.data || err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
