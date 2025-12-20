@@ -159,9 +159,9 @@ app.post('/send-messages', async (req, res) => {
     console.log(`🔄 Duplicates removed: ${duplicateCount}`);
     console.log(`⚠️  Invalid/missing phones: ${invalidCount}`);
 
-    // Batch configuration - Adjusted for Twilio rate limits
-    const BATCH_SIZE = 5;  // 5 messages per batch
-    const BATCH_DELAY_MS = 2000; // 2 seconds between batches (2.5 msg/sec rate)
+    // Batch configuration - Ultra conservative for Twilio rate limits
+    const BATCH_SIZE = 1;  // 1 message at a time
+    const BATCH_DELAY_MS = 1000; // 1 second between messages (1 msg/sec rate)
     const results = [];
     let successCount = 0;
     let failureCount = 0;
