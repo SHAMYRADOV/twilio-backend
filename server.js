@@ -122,21 +122,33 @@ app.post('/send-messages', async (req, res) => {
     // Extract and deduplicate phone numbers
     const contactsMap = new Map(); // Use Map to track duplicates
     let duplicateCount = 0;
+    let invalidCount = 0;
 
     for (const item of items) {
       const name = item.name;
       const phoneField = item.column_values.find(c => c.id === 'text_mkpfez9j');
       const rawPhone = phoneField?.text;
+      
+      if (!rawPhone) {
+        console.log(`⚠️  No phone for ${name} - skipping`);
+        invalidCount++;
+        continue;
+      }
+      
       const phone = normalizePhone(rawPhone);
       
-      if (!phone) continue;
+      if (!phone) {
+        console.log(`⚠️  Invalid phone format: ${rawPhone} (${name}) - skipping`);
+        invalidCount++;
+        continue;
+      }
 
       // Remove all non-digit characters for duplicate detection
       const phoneKey = phone.replace(/\D/g, '');
       
       if (contactsMap.has(phoneKey)) {
         duplicateCount++;
-        console.log(`🔄 Duplicate found: ${rawPhone} (${name}) - skipping`);
+        console.log(`🔄 Duplicate found: ${rawPhone} (${name}) already exists as ${contactsMap.get(phoneKey).rawPhone} - skipping`);
       } else {
         contactsMap.set(phoneKey, { name, phone, rawPhone });
       }
@@ -145,10 +157,11 @@ app.post('/send-messages', async (req, res) => {
     const uniqueContacts = Array.from(contactsMap.values());
     console.log(`✅ Unique contacts: ${uniqueContacts.length}`);
     console.log(`🔄 Duplicates removed: ${duplicateCount}`);
+    console.log(`⚠️  Invalid/missing phones: ${invalidCount}`);
 
-    // Batch configuration
-    const BATCH_SIZE = 10;
-    const BATCH_DELAY_MS = 2000; // 2 seconds between batches
+    // Batch configuration - Adjusted for Twilio rate limits
+    const BATCH_SIZE = 5;  // 5 messages per batch
+    const BATCH_DELAY_MS = 2000; // 2 seconds between batches (2.5 msg/sec rate)
     const results = [];
     let successCount = 0;
     let failureCount = 0;
@@ -209,6 +222,7 @@ app.post('/send-messages', async (req, res) => {
       summary: {
         totalContacts: items.length,
         duplicatesRemoved: duplicateCount,
+        invalidPhones: invalidCount,
         uniqueContacts: uniqueContacts.length,
         successCount,
         failureCount,
