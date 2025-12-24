@@ -78,7 +78,7 @@ app.post('/test-send', async (req, res) => {
 });
 
 app.post('/send-messages', async (req, res) => {
-  const { message, imageUrl } = req.body;
+  const { message, imageUrl, alreadySentPhones = [] } = req.body;
   const startTime = Date.now();
 
   if (!message && !imageUrl) {
@@ -87,6 +87,7 @@ app.post('/send-messages', async (req, res) => {
 
   try {
     console.log('📞 Starting campaign...');
+    console.log(`📋 Already sent to ${alreadySentPhones.length} phones (will skip these)`);
     
     // Fetch contractors from Monday.com
     const query = `
@@ -146,37 +147,53 @@ app.post('/send-messages', async (req, res) => {
       // Remove all non-digit characters for duplicate detection
       const phoneKey = phone.replace(/\D/g, '');
       
+      // Skip if already sent in previous batches
+      if (alreadySentPhones.includes(phoneKey)) {
+        console.log(`⏭️  Already sent: ${rawPhone} (${name}) - skipping`);
+        duplicateCount++;
+        continue;
+      }
+      
       if (contactsMap.has(phoneKey)) {
         duplicateCount++;
         console.log(`🔄 Duplicate found: ${rawPhone} (${name}) already exists as ${contactsMap.get(phoneKey).rawPhone} - skipping`);
       } else {
-        contactsMap.set(phoneKey, { name, phone, rawPhone });
+        contactsMap.set(phoneKey, { name, phone, rawPhone, phoneKey });
       }
     }
 
     const uniqueContacts = Array.from(contactsMap.values());
     console.log(`✅ Unique contacts: ${uniqueContacts.length}`);
-    console.log(`🔄 Duplicates removed: ${duplicateCount}`);
+    console.log(`🔄 Duplicates/Already sent removed: ${duplicateCount}`);
     console.log(`⚠️  Invalid/missing phones: ${invalidCount}`);
+
+    // Limit to 25 messages per request to avoid Twilio limits
+    const MAX_MESSAGES_PER_REQUEST = 25;
+    const contactsToSend = uniqueContacts.slice(0, MAX_MESSAGES_PER_REQUEST);
+    const remainingContacts = uniqueContacts.length - contactsToSend.length;
+    
+    console.log(`📨 Sending to ${contactsToSend.length} contacts this batch`);
+    console.log(`⏭️  ${remainingContacts} contacts remaining for next batch`);
 
     // Batch configuration - Ultra conservative for Twilio rate limits
     const BATCH_SIZE = 1;  // 1 message at a time
     const BATCH_DELAY_MS = 1000; // 1 second between messages (1 msg/sec rate)
     const results = [];
+    const sentPhoneKeys = [];
     let successCount = 0;
     let failureCount = 0;
 
     // Process in batches
-    for (let i = 0; i < uniqueContacts.length; i += BATCH_SIZE) {
-      const batch = uniqueContacts.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < contactsToSend.length; i += BATCH_SIZE) {
+      const batch = contactsToSend.slice(i, i + BATCH_SIZE);
       const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(uniqueContacts.length / BATCH_SIZE);
+      const totalBatches = Math.ceil(contactsToSend.length / BATCH_SIZE);
       
       console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} messages)`);
 
       // Send all messages in current batch in parallel
       const batchPromises = batch.map(async (contact) => {
-        const { name, phone, rawPhone } = contact;
+        const { name, phone, rawPhone, phoneKey } = contact;
         const personalized = message.replaceAll('{name}', name);
 
         try {
@@ -188,6 +205,7 @@ app.post('/send-messages', async (req, res) => {
           });
 
           console.log(`✅ Sent to ${name} (${phone}) - SID: ${result.sid}`);
+          sentPhoneKeys.push(phoneKey); // Track sent phone
           successCount++;
           return { name, phone: rawPhone, status: 'sent', sid: result.sid, twilioStatus: result.status };
         } catch (err) {
@@ -215,7 +233,7 @@ app.post('/send-messages', async (req, res) => {
       console.log(`📊 Progress: ${results.length}/${uniqueContacts.length} | Success: ${successCount} | Failed: ${failureCount}`);
 
       // Delay before next batch (except for the last batch)
-      if (i + BATCH_SIZE < uniqueContacts.length) {
+      if (i + BATCH_SIZE < contactsToSend.length) {
         console.log(`⏳ Waiting ${BATCH_DELAY_MS / 1000}s before next batch...`);
         await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
       }
@@ -226,22 +244,26 @@ app.post('/send-messages', async (req, res) => {
     const endTime = Date.now();
     const durationSeconds = Math.round((endTime - startTime) / 1000);
     
-    console.log('🎉 Campaign complete!');
+    console.log('🎉 Campaign batch complete!');
     console.log(`✅ Success: ${successCount}`);
     console.log(`❌ Failed: ${failureCount}`);
     console.log(`⏱️  Duration: ${durationSeconds}s`);
+    console.log(`⏭️  Remaining: ${remainingContacts} contacts`);
 
     res.json({ 
       success: true, 
       results,
+      sentPhoneKeys, // Return phones that were sent to
       summary: {
         totalContacts: items.length,
         duplicatesRemoved: duplicateCount,
         invalidPhones: invalidCount,
         uniqueContacts: uniqueContacts.length,
+        remainingContacts,
         successCount,
         failureCount,
-        durationSeconds
+        durationSeconds,
+        hasMore: remainingContacts > 0
       }
     });
   } catch (err) {
