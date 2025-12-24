@@ -245,7 +245,6 @@ app.post('/send-messages', async (req, res) => {
     console.log(`✅ Success: ${successCount}`);
     console.log(`❌ Failed: ${failureCount}`);
     console.log(`⏱️  Duration: ${durationSeconds}s`);
-    console.log(`⏭️  Remaining: ${remainingContacts} contacts`);
 
     res.json({ 
       success: true, 
