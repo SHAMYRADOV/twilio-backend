@@ -126,7 +126,11 @@ app.post('/send-messages', async (req, res) => {
     let invalidCount = 0;
 
     for (const item of items) {
-      const name = item.name;
+      // Clean name - remove (copy) and similar suffixes
+      let name = item.name;
+      name = name.replace(/\s*\(copy\)\s*$/i, '').trim();
+      name = name.replace(/\s*\(duplicate\)\s*$/i, '').trim();
+      
       const phoneField = item.column_values.find(c => c.id === 'text_mkpfez9j');
       const rawPhone = phoneField?.text;
       
