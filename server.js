@@ -253,17 +253,15 @@ app.post('/send-messages', async (req, res) => {
     res.json({ 
       success: true, 
       results,
-      sentPhoneKeys, // Return phones that were sent to
+      sentPhoneKeys: sentPhoneKeys || [], // Return phones that were sent to
       summary: {
         totalContacts: items.length,
         duplicatesRemoved: duplicateCount,
         invalidPhones: invalidCount,
         uniqueContacts: uniqueContacts.length,
-        remainingContacts,
         successCount,
         failureCount,
-        durationSeconds,
-        hasMore: remainingContacts > 0
+        durationSeconds
       }
     });
   } catch (err) {
