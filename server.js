@@ -93,7 +93,7 @@ app.post('/send-messages', async (req, res) => {
     const query = `
       query {
         boards(ids: "${BOARD_ID}") {
-          items_page {
+          items_page(limit: 50) {
             items {
               name
               column_values {
