@@ -167,13 +167,10 @@ app.post('/send-messages', async (req, res) => {
     console.log(`🔄 Duplicates/Already sent removed: ${duplicateCount}`);
     console.log(`⚠️  Invalid/missing phones: ${invalidCount}`);
 
-    // Limit to 25 messages per request to avoid Twilio limits
-    const MAX_MESSAGES_PER_REQUEST = 25;
-    const contactsToSend = uniqueContacts.slice(0, MAX_MESSAGES_PER_REQUEST);
-    const remainingContacts = uniqueContacts.length - contactsToSend.length;
+    // Process all contacts - no artificial limit
+    const contactsToSend = uniqueContacts;
     
-    console.log(`📨 Sending to ${contactsToSend.length} contacts this batch`);
-    console.log(`⏭️  ${remainingContacts} contacts remaining for next batch`);
+    console.log(`📨 Sending to ${contactsToSend.length} contacts`);
 
     // Batch configuration - 10 messages per second
     const BATCH_SIZE = 10;  // 10 messages at a time
