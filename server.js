@@ -191,8 +191,19 @@ app.post('/send-messages', async (req, res) => {
           successCount++;
           return { name, phone: rawPhone, status: 'sent', sid: result.sid, twilioStatus: result.status };
         } catch (err) {
-          console.log(`❌ Failed: ${name} (${phone}) - ${err.message}`);
+          console.log(`❌ Failed: ${name} (${phone})`);
+          console.log(`   Error Code: ${err.code}`);
+          console.log(`   Error Message: ${err.message}`);
+          console.log(`   More Info: ${err.moreInfo}`);
+          console.log(`   Full Error:`, JSON.stringify(err, null, 2));
           failureCount++;
+          
+          // If we hit a critical error that affects all subsequent messages, log it prominently
+          if (err.code === 20003 || err.code === 21606 || err.code === 63016) {
+            console.log(`🚨 CRITICAL ERROR - This may stop all remaining messages!`);
+            console.log(`🚨 Error Code ${err.code}: ${err.message}`);
+          }
+          
           return { name, phone: rawPhone, status: 'failed', error: err.message, code: err.code };
         }
       });
@@ -200,6 +211,8 @@ app.post('/send-messages', async (req, res) => {
       // Wait for all messages in batch to complete
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
+      
+      console.log(`📊 Progress: ${results.length}/${uniqueContacts.length} | Success: ${successCount} | Failed: ${failureCount}`);
 
       // Delay before next batch (except for the last batch)
       if (i + BATCH_SIZE < uniqueContacts.length) {
@@ -207,6 +220,8 @@ app.post('/send-messages', async (req, res) => {
         await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
       }
     }
+    
+    console.log(`🏁 Loop completed! Processed ${results.length} contacts total.`);
 
     const endTime = Date.now();
     const durationSeconds = Math.round((endTime - startTime) / 1000);
