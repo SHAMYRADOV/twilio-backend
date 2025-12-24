@@ -175,9 +175,9 @@ app.post('/send-messages', async (req, res) => {
     console.log(`📨 Sending to ${contactsToSend.length} contacts this batch`);
     console.log(`⏭️  ${remainingContacts} contacts remaining for next batch`);
 
-    // Batch configuration - Ultra conservative for Twilio rate limits
-    const BATCH_SIZE = 1;  // 1 message at a time
-    const BATCH_DELAY_MS = 1000; // 1 second between messages (1 msg/sec rate)
+    // Batch configuration - 10 messages per second
+    const BATCH_SIZE = 10;  // 10 messages at a time
+    const BATCH_DELAY_MS = 1000; // 1 second between batches (10 msgs/sec rate)
     const results = [];
     const sentPhoneKeys = [];
     let successCount = 0;
